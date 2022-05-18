@@ -65,3 +65,30 @@ label_encoder_production_companies= LabelEncoder()
 production_companies_data = file['production_companies'].explode()
 production_companies_data[:] = label_encoder_production_companies.fit_transform(production_companies_data)
 file['production_companies'] = production_companies_data.groupby(level=0).agg(list)
+
+
+cast_data_one_hot = file['cast'].explode()
+cast_OneHotEncoder = OneHotEncoder(sparse=(False))
+cast_data_one_hot = np.expand_dims(cast_data_one_hot,axis=1)
+cast_data_one_hot = cast_OneHotEncoder.fit_transform(cast_data_one_hot) 
+
+keywords_data_one_hot = file['keywords'].explode()
+keywords_OneHotEncoder = OneHotEncoder(sparse=(False))
+keywords_data_one_hot = np.expand_dims(keywords_data_one_hot,axis=1)
+keywords_data_one_hot = keywords_OneHotEncoder.fit_transform(keywords_data_one_hot)
+
+geners_data_one_hot = file['genres'].explode()
+geners_OneHotEncoder = OneHotEncoder(sparse=(False))
+geners_data_one_hot = np.expand_dims(geners_data_one_hot,axis=1)
+geners_data_one_hot = geners_OneHotEncoder.fit_transform(geners_data_one_hot)
+
+production_companies_data_one_hot = file['production_companies'].explode()
+production_companies_OneHotEncoder = OneHotEncoder(sparse=(False))
+production_companies_data_one_hot = np.expand_dims(production_companies_data_one_hot,axis=1)
+production_companies_data_one_hot = production_companies_OneHotEncoder.fit_transform(production_companies_data_one_hot)
+
+'''
+    ### to restore data ###
+    s = production_companies_OneHotEncoder.inverse_transform(np.expand_dims(production_companies_data_one_hot[0],axis=0)).astype('int')
+    x = label_encoder_production_companies.inverse_transform(s.reshape(1,))
+'''
