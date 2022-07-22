@@ -1,12 +1,16 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn import preprocessing, linear_model
-from func import scaling, split_data
+from sklearn import preprocessing, linear_model, metrics
+from func import scaling, split_data, binatodeci
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder
+from sklearn.model_selection import train_test_split
+from sklearn.naive_bayes import GaussianNB
+from sklearn.preprocessing import PolynomialFeatures, MultiLabelBinarizer
+from sklearn.metrics import f1_score
 
 # get data from files
-file = pd.read_csv(r'..\Dataset\tmdb-movies.csv')
+
 
 # clean & filter
 '''
@@ -18,43 +22,32 @@ file = pd.read_csv(r'..\Dataset\tmdb-movies.csv')
     5th convert categorical to numerical
 -------- -------- -------- -------- --------
 '''
+
+file = pd.read_csv(r'..\Dataset\tmdb-movies.csv')
 file.drop(columns=(['id','imdb_id','tagline','release_year']), inplace=True)
-file.drop(columns=(['director','overview','homepage','original_title']), inplace=True)
-file = file[['cast','keywords','genres','production_companies','release_date','popularity','runtime','vote_count','vote_average','budget_adj','revenue_adj']] # arrange columns
+file.drop(columns=(['overview','homepage','original_title','keywords']), inplace=True)
+file = file[['cast','genres','production_companies','director','release_date','popularity','runtime','vote_count','vote_average','budget_adj','revenue_adj']] # arrange columns
 
 # cast - keywords - genres - production_companies there is a null value 
 file.dropna(inplace=True)
+file = file[file['budget_adj'] != 0].dropna()
+file = file[file['revenue_adj'] != 0].dropna()
+file.drop_duplicates(inplace=True)
 file.reset_index(drop=True,inplace=True)
 
-file.drop_duplicates(inplace=True)
 
 # Scaling by built in function or create a new one
-scaling(file,['popularity','runtime','vote_count','vote_average','budget_adj','revenue_adj'])
-'''
-    min_max_scaler = preprocessing.MinMaxScaler(feature_range =(0, 1))
-    file['popularity'] = min_max_scaler.fit_transform(file.iloc[:,0:1])
-    data_after_scaling = min_max_scaler.fit_transform(file.iloc[:,7:])
-    df = pd.DataFrame(data_after_scaling)
-    file['vote_count'] = df[0]
-    file['vote_average'] = df[1]
-    file['budget_adj'] = df[2]
-    file['revenue_adj'] = df[3]
-    data_after_scaling = min_max_scaler.fit_transform(file.iloc[:,3:4])
-    file['runtime'] = data_after_scaling
-    del data_after_scaling, df, min_max_scaler
-'''
+file['release_date'] = pd.to_datetime(file['release_date'])
+file['release_date'] = file['release_date'].apply(pd.Timestamp.timestamp)
+scaling(file,['popularity','runtime','vote_count','vote_average','budget_adj','revenue_adj','release_date'])
 
-split_data(file,['cast','keywords','genres','production_companies'])
+split_data(file,['cast','genres','production_companies'])
+
 
 label_encoder_cast = LabelEncoder()
 cast_data = file['cast'].explode()
 cast_data[:] = label_encoder_cast.fit_transform(cast_data)
 file['cast'] = cast_data.groupby(level=0).agg(list)
-
-label_encoder_keywords = LabelEncoder()
-keywords_data = file['keywords'].explode()
-keywords_data[:] = label_encoder_keywords.fit_transform(keywords_data)
-file['keywords'] = keywords_data.groupby(level=0).agg(list)
 
 label_encoder_genres = LabelEncoder()
 genres_data = file['genres'].explode()
@@ -66,29 +59,42 @@ production_companies_data = file['production_companies'].explode()
 production_companies_data[:] = label_encoder_production_companies.fit_transform(production_companies_data)
 file['production_companies'] = production_companies_data.groupby(level=0).agg(list)
 
+label_encoder_director = LabelEncoder()
+director_data = file['production_companies'].explode()
+director_data[:] = label_encoder_director.fit_transform(director_data)
+file['director'] = director_data.groupby(level=0).agg(list)
 
-cast_data_one_hot = file['cast'].explode()
-cast_OneHotEncoder = OneHotEncoder(sparse=(False))
-cast_data_one_hot = np.expand_dims(cast_data_one_hot,axis=1)
-cast_data_one_hot = cast_OneHotEncoder.fit_transform(cast_data_one_hot) 
 
-keywords_data_one_hot = file['keywords'].explode()
-keywords_OneHotEncoder = OneHotEncoder(sparse=(False))
-keywords_data_one_hot = np.expand_dims(keywords_data_one_hot,axis=1)
-keywords_data_one_hot = keywords_OneHotEncoder.fit_transform(keywords_data_one_hot)
+file = file.explode('cast')
+file = file.explode('genres')
+file = file.explode('production_companies')
+file = file.explode('director')
+file.reset_index(drop=True,inplace = True)
+file.cast = file.cast.astype('int') 
 
-geners_data_one_hot = file['genres'].explode()
-geners_OneHotEncoder = OneHotEncoder(sparse=(False))
-geners_data_one_hot = np.expand_dims(geners_data_one_hot,axis=1)
-geners_data_one_hot = geners_OneHotEncoder.fit_transform(geners_data_one_hot)
+file.genres = file.genres.astype('int') 
+file.production_companies = file.production_companies.astype('int') 
+file.director = file.director.astype('int') 
+scaling(file,['cast','production_companies','genres','director'])
+X = file.iloc[:,0:9]
+Y = file['budget_adj'] - file['revenue_adj']
+X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2)
 
-production_companies_data_one_hot = file['production_companies'].explode()
-production_companies_OneHotEncoder = OneHotEncoder(sparse=(False))
-production_companies_data_one_hot = np.expand_dims(production_companies_data_one_hot,axis=1)
-production_companies_data_one_hot = production_companies_OneHotEncoder.fit_transform(production_companies_data_one_hot)
+poly_features = PolynomialFeatures(degree= 3)
 
-'''
-    ### to restore data ###
-    s = production_companies_OneHotEncoder.inverse_transform(np.expand_dims(production_companies_data_one_hot[0],axis=0)).astype('int')
-    x = label_encoder_production_companies.inverse_transform(s.reshape(1,))
-'''
+# transforms the existing features to higher degree features.
+X_train_poly = poly_features.fit_transform(X_train)
+
+# fit the transformed features to Linear Regression
+poly_model = linear_model.LinearRegression()
+poly_model.fit(X_train_poly, y_train)
+
+# predicting on training data-set
+y_train_predicted = poly_model.predict(X_train_poly)
+
+# predicting on test data-set
+prediction = poly_model.predict(poly_features.fit_transform(X_test))
+
+print(poly_model.score(poly_features.fit_transform(X_test),y_test))
+
+
